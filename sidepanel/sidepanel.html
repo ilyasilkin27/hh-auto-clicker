@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>HH Auto Responder</title>
+    <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 HH Auto Responder</h1>
+            <div class="status" id="status">Готов к работе</div>
+        </header>
+
+        <div class="section">
+            <h3>⚙️ Настройки откликов</h3>
+            <div class="form-group">
+                <label>Сопроводительное письмо:</label>
+                <textarea id="coverLetter" placeholder="Добрый день! Заинтересовала ваша вакансия...">Добрый день! Заинтересовала ваша вакансия. Готов рассмотреть предложение.</textarea>
+            </div>
+            <div class="form-group">
+                <label>Максимум откликов:</label>
+                <input type="number" id="maxResponses" value="50" min="1" max="100">
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>🎯 Автоматизация</h3>
+            <div class="button-group">
+                <button id="startAutoBtn" class="btn play">▶️ Запуск автооткликов</button>
+                <button id="stopAutoBtn" class="btn stop" disabled>⏹️ Остановить</button>
+            </div>
+            <div class="stats" id="stats">
+                <div>Откликов отправлено: <span id="responseCount">0</span></div>
+                <div>Прогресс: <span id="progress">0/50 (0%)</span></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="sidepanel.js"></script>
+</body>
+</html>

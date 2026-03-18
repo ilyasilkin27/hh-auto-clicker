@@ -13,6 +13,29 @@
 
 ## Быстрый старт
 
+## Зависимости
+
+Для работы скрипта нужны:
+
+1. Node.js 18+ (рекомендуется LTS).
+2. npm 9+.
+3. npm-пакет playwright (ставится через `npm install`).
+4. Бинарник браузера Chromium для Playwright (ставится через `npx playwright install chromium`).
+
+Проверка версий:
+
+```bash
+node -v
+npm -v
+npx playwright --version
+```
+
+Если на Linux не хватает системных библиотек для Chromium, выполните:
+
+```bash
+npx playwright install-deps chromium
+```
+
 ### 1) Установка
 
 ```bash

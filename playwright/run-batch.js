@@ -46,6 +46,7 @@ const runWorker = ({
   cookiesPath,
   max,
   maxAttempts,
+  maxFailStreak,
   headed,
   debug,
   cover,
@@ -59,6 +60,10 @@ const runWorker = ({
 
   if (maxAttempts) {
     args.push('--maxAttempts', String(maxAttempts))
+  }
+
+  if (maxFailStreak) {
+    args.push('--maxFailStreak', String(maxFailStreak))
   }
 
   if (cover) {
@@ -154,6 +159,7 @@ const main = async () => {
   const cookiesPath = args.cookies || './playwright/cookies.json'
   const max = Number.parseInt(args.max ?? '10', 10)
   const maxAttempts = Number.parseInt(args.maxAttempts ?? '40', 10)
+  const maxFailStreak = Number.parseInt(args.maxFailStreak ?? '5', 10)
   const concurrencyRaw = Number.parseInt(args.concurrency ?? '5', 10)
   const concurrency = Math.min(5, Math.max(1, concurrencyRaw))
   const headed = Boolean(args.headed)
@@ -166,6 +172,12 @@ const main = async () => {
 
   if (Number.isNaN(maxAttempts) || maxAttempts <= 0) {
     throw new Error('Параметр --maxAttempts должен быть положительным числом.')
+  }
+
+  if (Number.isNaN(maxFailStreak) || maxFailStreak <= 0) {
+    throw new Error(
+      'Параметр --maxFailStreak должен быть положительным числом.',
+    )
   }
 
   const resumeIds = await readResumeIds(resumesFile)
@@ -190,6 +202,7 @@ const main = async () => {
         cookiesPath,
         max,
         maxAttempts,
+        maxFailStreak,
         headed,
         debug,
         cover,

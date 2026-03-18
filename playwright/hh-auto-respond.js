@@ -136,6 +136,31 @@ const ensureVacancySearchPage = async (page, searchUrl) => {
   await dismissOverlay(page)
 }
 
+const goToNextSearchPage = async page => {
+  const nextButton = page
+    .locator('[data-qa="pager-next"]:visible, a[rel="next"]:visible')
+    .first()
+
+  if (!(await nextButton.count())) {
+    return false
+  }
+
+  try {
+    await nextButton.click({ timeout: 3000 })
+  } catch {
+    try {
+      await nextButton.scrollIntoViewIfNeeded()
+      await nextButton.click({ force: true, timeout: 3000 })
+    } catch {
+      return false
+    }
+  }
+
+  await page.waitForLoadState('domcontentloaded').catch(() => {})
+  await delay(1200)
+  return true
+}
+
 const fillCoverLetterInVisibleField = async (page, coverLetter) => {
   const textarea = page
     .locator(
@@ -352,6 +377,15 @@ const navigateToVacancySearch = async (page, resumeId = '') => {
   await delay(1500)
   await dismissOverlay(page)
 
+  if (resumeId) {
+    console.log('Шаг 2: открываем рекомендации для переданного resumeId...')
+    const directUrl = `https://hh.ru/search/vacancy?resume=${resumeId}&from=resumelist`
+    await page.goto(directUrl, { waitUntil: 'domcontentloaded' })
+    await delay(1500)
+    console.log(`Страница вакансий: ${page.url()}`)
+    return
+  }
+
   console.log('Шаг 2: кликаем на поиск вакансий по резюме...')
   const vacanciesBtn = page
     .locator('[data-qa="resume-recommendations__button_promoteResume"]')
@@ -383,14 +417,6 @@ const navigateToVacancySearch = async (page, resumeId = '') => {
       console.log(`Страница вакансий: ${page.url()}`)
       return
     }
-  }
-
-  if (resumeId) {
-    const fallbackUrl = `https://hh.ru/search/vacancy?resume=${resumeId}&from=resumelist`
-    await page.goto(fallbackUrl, { waitUntil: 'domcontentloaded' })
-    await delay(1500)
-    console.log(`Страница вакансий: ${page.url()}`)
-    return
   }
 
   throw new Error(
@@ -482,6 +508,7 @@ const main = async () => {
     args.maxAttempts ?? String(Math.max(maxResponses * 5, maxResponses)),
     10,
   )
+  const maxFailStreak = Number.parseInt(args.maxFailStreak ?? '5', 10)
   const overrideUrl = args.url
   const resumeId = args.resume || ''
   const coverLetter = args.cover || args.coverLetter || DEFAULT_COVER_LETTER
@@ -495,6 +522,12 @@ const main = async () => {
 
   if (Number.isNaN(maxAttempts) || maxAttempts <= 0) {
     throw new Error('Параметр --maxAttempts должен быть положительным числом.')
+  }
+
+  if (Number.isNaN(maxFailStreak) || maxFailStreak <= 0) {
+    throw new Error(
+      'Параметр --maxFailStreak должен быть положительным числом.',
+    )
   }
 
   const browser = await chromium.launch({ headless })
@@ -526,11 +559,14 @@ const main = async () => {
       targetSearchUrl = overrideUrl
     } else {
       await navigateToVacancySearch(page, resumeId)
-      targetSearchUrl = page.url()
+      targetSearchUrl = resumeId
+        ? `https://hh.ru/search/vacancy?resume=${resumeId}&from=resumelist`
+        : page.url()
     }
 
     let sent = 0
     let attempts = 0
+    let failStreak = 0
 
     while (sent < maxResponses && attempts < maxAttempts) {
       await ensureVacancySearchPage(page, targetSearchUrl)
@@ -548,13 +584,29 @@ const main = async () => {
 
       if (success) {
         sent += 1
+        failStreak = 0
         console.log(`Успех. Отправлено: ${sent}/${maxResponses}`)
 
         if (sent >= maxResponses) {
           break
         }
       } else {
+        failStreak += 1
         console.log('Отклик не отправлен в этой попытке.')
+
+        if (failStreak >= maxFailStreak) {
+          console.log(
+            `Подряд неудач: ${failStreak}. Переходим на следующую страницу выдачи...`,
+          )
+          const moved = await goToNextSearchPage(page)
+          if (moved) {
+            failStreak = 0
+            targetSearchUrl = page.url()
+          } else {
+            console.log('Следующая страница не найдена, продолжаем на текущей.')
+            failStreak = 0
+          }
+        }
       }
     }
 

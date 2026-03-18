@@ -18,7 +18,8 @@
 3. Находит кнопку Откликнуться.
 4. Заполняет сопроводительное письмо в доступное поле.
 5. Отправляет отклик.
-6. Если вакансия блокирует процесс (например, "Ответьте на вопросы") - пропускает и скрывает ее.
+6. Если вакансия блокирует процесс (например, "Ответьте на вопросы") - пропускает и пытается скрыть ее.
+7. Если подряд идет серия неудачных попыток, скрипт пытается перейти на следующую страницу выдачи.
 
 ## Зависимости
 
@@ -102,13 +103,13 @@ npm run start:pw -- --cookies ./playwright/cookies.json --resume YOUR_RESUME_ID 
 Рабочий запуск (headless):
 
 ```bash
-npm run start:pw -- --cookies ./playwright/cookies.json --resume YOUR_RESUME_ID --max 10 --maxAttempts 40
+npm run start:pw -- --cookies ./playwright/cookies.json --resume YOUR_RESUME_ID --max 10 --maxAttempts 40 --maxFailStreak 5
 ```
 
 Рабочий запуск (headed):
 
 ```bash
-npm run start:pw:headed -- --cookies ./playwright/cookies.json --resume YOUR_RESUME_ID --max 10 --maxAttempts 40
+npm run start:pw:headed -- --cookies ./playwright/cookies.json --resume YOUR_RESUME_ID --max 10 --maxAttempts 40 --maxFailStreak 5
 ```
 
 ### Вариант B: batch, несколько резюме
@@ -116,16 +117,20 @@ npm run start:pw:headed -- --cookies ./playwright/cookies.json --resume YOUR_RES
 Headless batch:
 
 ```bash
-npm run start:pw:batch -- --resumes ./playwright/resumes.json --cookies ./playwright/cookies.json --max 10 --maxAttempts 40 --concurrency 5
+npm run start:pw:batch -- --resumes ./playwright/resumes.json --cookies ./playwright/cookies.json --max 10 --maxAttempts 40 --maxFailStreak 5 --concurrency 2
 ```
 
 Headed batch:
 
 ```bash
-npm run start:pw:batch:headed -- --resumes ./playwright/resumes.json --cookies ./playwright/cookies.json --max 10 --maxAttempts 40 --concurrency 5
+npm run start:pw:batch:headed -- --resumes ./playwright/resumes.json --cookies ./playwright/cookies.json --max 10 --maxAttempts 40 --maxFailStreak 5 --concurrency 2
 ```
 
-Примечание: concurrency ограничен диапазоном 1-5.
+Примечания:
+
+1. concurrency ограничен диапазоном 1-5.
+2. Для стабильности лучше начинать с concurrency 2.
+3. Каждый процесс batch работает со своим resumeId, а не с общим резюме.
 
 ## Все параметры CLI
 
@@ -141,13 +146,16 @@ npm run start:pw:batch:headed -- --resumes ./playwright/resumes.json --cookies .
 4. --maxAttempts
    - Максимум попыток, чтобы не зациклиться.
    - По умолчанию: max \* 5.
-5. --cover
+5. --maxFailStreak
+   - Сколько неудачных попыток подряд допустить перед переходом на следующую страницу выдачи.
+   - По умолчанию: 5.
+6. --cover
    - Текст сопроводительного письма.
-6. --url
+7. --url
    - Прямой URL выдачи вакансий (альтернатива навигации по резюме).
-7. --debug
+8. --debug
    - Расширенные логи и debug-скриншоты на первой попытке.
-8. --headed
+9. --headed
    - Запуск с видимым окном браузера.
 
 ### Дополнительно для batch-скрипта
@@ -159,14 +167,18 @@ npm run start:pw:batch:headed -- --resumes ./playwright/resumes.json --cookies .
    - Количество параллельных процессов.
    - Диапазон: 1-5.
    - По умолчанию: 5.
+3. --maxFailStreak
+   - Пробрасывается в каждый дочерний процесс batch.
+   - Управляет переходом на следующую страницу после серии неудач.
 
 ## Рекомендуемый сценарий работы
 
 1. Обновите cookies.
 2. Запустите тест на 1 отклик в headed.
 3. Убедитесь, что письмо подставляется корректно.
-4. Запустите рабочий headless-прогон.
+4. Запустите рабочий headless-прогон для одного резюме.
 5. Для нескольких резюме переходите на batch.
+6. Для batch сначала используйте concurrency 2, а не 5.
 
 ## Что делать, если что-то не работает
 
@@ -175,11 +187,13 @@ npm run start:pw:batch:headed -- --resumes ./playwright/resumes.json --cookies .
 1. Запустите с --debug в headed режиме.
 2. Проверьте логи и скриншоты.
 3. Увеличьте --maxAttempts.
+4. Попробуйте уменьшить concurrency в batch.
 
 ### Резюме открывается не то
 
 1. Обязательно передавайте --resume.
 2. В batch убедитесь, что resumeIds корректны в resumes.json.
+3. Если запускаете один процесс, не смешивайте --resume и чужой --url.
 
 ### Похоже, что аккаунт разлогинен
 
@@ -187,8 +201,15 @@ npm run start:pw:batch:headed -- --resumes ./playwright/resumes.json --cookies .
 2. Замените файл ./playwright/cookies.json.
 3. Запустите короткий тест.
 
+### Много неудачных попыток подряд
+
+1. Увеличьте --maxAttempts.
+2. Настройте --maxFailStreak, например 3-5.
+3. Проверьте, есть ли следующая страница в выдаче.
+
 ## Важные заметки
 
 1. Скрипт отправляет реальные отклики с вашего аккаунта.
 2. Перед массовым запуском всегда делайте короткий тест.
 3. Высокий параллелизм может повышать шанс ограничений со стороны HH.
+4. Практически самый стабильный режим для batch: concurrency 2.

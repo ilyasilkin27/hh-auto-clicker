@@ -1,13 +1,20 @@
 import fs from 'node:fs/promises'
 import { chromium, devices } from 'playwright'
 
-const DEFAULT_COVER_LETTER = `Здравствуйте!
+const DEFAULT_COVER_LETTER = `Приветствую!
 
-Меня заинтересовала ваша вакансия. Я считаю, что мой опыт и навыки соответствуют требованиям, и я хотел бы предложить свою кандидатуру на рассмотрение.
+Я фронтенд-разработчик на React и TypeScript.
+Работал с образовательными платформами и сложными веб-системами. 
+Улучшал производительность, архитектуру и процессы разработки.
 
-Буду рад обсудить, как могу быть полезен вашей команде.
+Портфолио: ilya-silkin-portfolio.vercel.app
+Резюме: https://hh.ru/resume/9ff5012dff0fea5cb20039ed1f6d7a70344956
 
-Спасибо за внимание к моему отклику!`
+Контакты:
+
+Email: ilyasilkin27@gmail.com
+Telegram: https://t.me/ilyaturlakov27
+GitHub: https://github.com/ilyasilkin27`
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 

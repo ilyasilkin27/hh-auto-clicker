@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "start:pw": "node playwright/hh-auto-respond.js",
-    "start:pw:headed": "node playwright/hh-auto-respond.js --headed"
+    "start:pw:headed": "node playwright/hh-auto-respond.js --headed",
+    "start:pw:batch": "node playwright/run-batch.js",
+    "start:pw:batch:headed": "node playwright/run-batch.js --headed"
   },
   "devDependencies": {
     "playwright": "^1.55.0"

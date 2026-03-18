@@ -1,0 +1,13 @@
+{
+  "name": "hh-auto-clicker",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start:pw": "node playwright/hh-auto-respond.js",
+    "start:pw:headed": "node playwright/hh-auto-respond.js --headed"
+  },
+  "devDependencies": {
+    "playwright": "^1.55.0"
+  }
+}

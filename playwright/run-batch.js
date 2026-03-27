@@ -50,6 +50,7 @@ const runWorker = ({
   headed,
   debug,
   cover,
+  query,
 }) => {
   const scriptPath = path.resolve('playwright/hh-auto-respond.js')
   const args = [scriptPath, '--cookies', cookiesPath, '--resume', resumeId]
@@ -68,6 +69,10 @@ const runWorker = ({
 
   if (cover) {
     args.push('--cover', cover)
+  }
+
+  if (query) {
+    args.push('--query', query)
   }
 
   if (headed) {
@@ -165,6 +170,7 @@ const main = async () => {
   const headed = Boolean(args.headed)
   const debug = Boolean(args.debug)
   const cover = args.cover
+  const query = args.query
 
   if (Number.isNaN(max) || max <= 0) {
     throw new Error('Параметр --max должен быть положительным числом.')
@@ -206,6 +212,7 @@ const main = async () => {
         headed,
         debug,
         cover,
+        query,
       }),
   })
 

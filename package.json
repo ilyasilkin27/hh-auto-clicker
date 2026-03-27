@@ -7,9 +7,7 @@
     "start:pw": "node playwright/hh-auto-respond.js",
     "start:pw:headed": "node playwright/hh-auto-respond.js --headed",
     "start:pw:batch": "node playwright/run-batch.js",
-    "start:pw:batch:headed": "node playwright/run-batch.js --headed",
-    "start:pw:chat": "node playwright/hh-chat-auto-respond.js",
-    "start:pw:chat:headed": "node playwright/hh-chat-auto-respond.js --headed"
+    "start:pw:batch:headed": "node playwright/run-batch.js --headed"
   },
   "devDependencies": {
     "playwright": "^1.55.0"

@@ -8,7 +8,6 @@ const DEFAULT_COVER_LETTER = `Приветствую!
 Улучшал производительность, архитектуру и процессы разработки.
 
 Портфолио: ilya-silkin-portfolio.vercel.app
-Резюме: https://hh.ru/resume/9ff5012dff0fea5cb20039ed1f6d7a70344956
 
 Контакты:
 
@@ -234,7 +233,22 @@ const clickAttachLetterAndSubmit = async (page, coverLetter) => {
     return false
   }
 
-  await attachButton.click()
+  try {
+    await attachButton.scrollIntoViewIfNeeded({ timeout: 3000 })
+  } catch {
+    // continue even if scroll fails
+  }
+
+  try {
+    await attachButton.click({ timeout: 5000 })
+  } catch {
+    try {
+      await attachButton.click({ force: true, timeout: 5000 })
+    } catch {
+      return false
+    }
+  }
+
   await delay(1200)
 
   const filled = await fillCoverLetterInVisibleField(page, coverLetter)
@@ -424,6 +438,22 @@ const navigateToVacancySearch = async (page, resumeId = '') => {
   )
 }
 
+const buildSearchUrlByQuery = (query, resumeId = '') => {
+  const normalizedQuery = String(query || '').trim()
+  const params = new URLSearchParams()
+
+  if (normalizedQuery) {
+    params.set('text', normalizedQuery)
+  }
+
+  if (resumeId) {
+    params.set('resume', resumeId)
+    params.set('from', 'resumelist')
+  }
+
+  return `https://hh.ru/search/vacancy?${params.toString()}`
+}
+
 const tryRespondToFirstVacancy = async (page, coverLetter, debug = false) => {
   // Ждём появления хотя бы одной карточки вакансии
   await page
@@ -511,6 +541,7 @@ const main = async () => {
   const maxFailStreak = Number.parseInt(args.maxFailStreak ?? '5', 10)
   const overrideUrl = args.url
   const resumeId = args.resume || ''
+  const searchQuery = String(args.query || '').trim()
   const coverLetter = args.cover || args.coverLetter || DEFAULT_COVER_LETTER
   const cookiesPath = args.cookies
   const headless = !args.headed
@@ -557,6 +588,12 @@ const main = async () => {
       await page.goto(overrideUrl, { waitUntil: 'domcontentloaded' })
       await page.waitForTimeout(1500)
       targetSearchUrl = overrideUrl
+    } else if (searchQuery) {
+      targetSearchUrl = buildSearchUrlByQuery(searchQuery, resumeId)
+      console.log(`Переходим в поиск по запросу: "${searchQuery}"`)
+      await page.goto(targetSearchUrl, { waitUntil: 'domcontentloaded' })
+      await page.waitForTimeout(1500)
+      console.log(`Страница вакансий: ${page.url()}`)
     } else {
       await navigateToVacancySearch(page, resumeId)
       targetSearchUrl = resumeId

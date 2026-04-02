@@ -12,7 +12,7 @@ const DEFAULT_COVER_LETTER = `Приветствую!
 Контакты:
 
 Email: ilyasilkin27@gmail.com
-Telegram: https://t.me/ilyaturlakov27
+Telegram: https://t.me/ilyailyailya27
 GitHub: https://github.com/ilyasilkin27`
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))

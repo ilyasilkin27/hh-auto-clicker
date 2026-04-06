@@ -8,6 +8,7 @@
     "start:pw:headed": "node playwright/hh-auto-respond.js --headed",
     "start:pw:batch": "node playwright/run-batch.js",
     "start:pw:batch:headed": "node playwright/run-batch.js --headed",
+    "start:pw:batch:daily": "node playwright/run-batch.js --resumes ./playwright/resumes.json --cookies ./playwright/cookies.json --max 100 --maxAttempts 400 --maxFailStreak 10 --concurrency 2",
     "chat:poll": "node chat-auto/cli/poll-new-messages.js",
     "chat:process": "node chat-auto/cli/process-cycle.js",
     "chat:drafts": "node chat-auto/cli/list-drafts.js",

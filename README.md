@@ -209,6 +209,7 @@ npm run start:pw:batch:headed -- --resumes ./playwright/resumes.json --cookies .
 Подробный гайд с нуля (установка, настройка, режимы, команды, безопасность):
 
 - [CHAT_AUTO_GUIDE.md](CHAT_AUTO_GUIDE.md)
+- [n8n/N8N_DETAILED_GUIDE.md](n8n/N8N_DETAILED_GUIDE.md)
 
 Добавлен модуль `chat-auto/` для цикла:
 

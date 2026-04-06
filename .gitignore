@@ -1,6 +1,7 @@
 .DS_Store
 playwright/cookies.json
 playwright/*.cookies.json
+playwright/apply-rotation-state.json
 node_modules/
 .env
 chat-auto/.env

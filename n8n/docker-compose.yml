@@ -15,10 +15,25 @@ services:
       timeout: 5s
       retries: 6
 
+  runner:
+    image: mcr.microsoft.com/playwright:v1.58.2-jammy
+    container_name: n8n-runner
+    restart: unless-stopped
+    working_dir: /files/hh-auto-clicker
+    environment:
+      RUNNER_HOST: 0.0.0.0
+      RUNNER_PORT: 3001
+      RUNNER_AUTH_TOKEN: ${RUNNER_AUTH_TOKEN}
+      PROJECT_ROOT: /files/hh-auto-clicker
+    command: ["node", "n8n/runner/server.mjs"]
+    volumes:
+      - ../:/files/hh-auto-clicker
+
   n8n:
-    image: n8nio/n8n:latest
+    image: n8nio/n8n:2.14.2
     container_name: n8n
     restart: unless-stopped
+    working_dir: /files/hh-auto-clicker
     ports:
       - "5678:5678"
     environment:
@@ -33,6 +48,7 @@ services:
       N8N_PROTOCOL: ${N8N_PROTOCOL}
       WEBHOOK_URL: ${WEBHOOK_URL}
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       GENERIC_TIMEZONE: ${GENERIC_TIMEZONE}
       N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE}
       N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER}
@@ -72,10 +88,14 @@ services:
       ALERT_TELEGRAM_BOT_TOKEN: ${ALERT_TELEGRAM_BOT_TOKEN}
       ALERT_TELEGRAM_CHAT_ID: ${ALERT_TELEGRAM_CHAT_ID}
       ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL}
+      RUNNER_AUTH_TOKEN: ${RUNNER_AUTH_TOKEN}
     depends_on:
       postgres:
         condition: service_healthy
+      runner:
+        condition: service_started
     volumes:
+      - ../:/files/hh-auto-clicker
       - n8n_data:/home/node/.n8n
 
 volumes:

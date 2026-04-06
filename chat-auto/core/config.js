@@ -31,11 +31,11 @@ export const config = {
   openAiModel: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
   groqApiKey: process.env.GROQ_API_KEY || '',
   groqModel: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
-  contactTelegram: process.env.CONTACT_TELEGRAM || '@ilyailyailya27',
-  contactEmail: process.env.CONTACT_EMAIL || 'ilyasilkin27@gmail.com',
-  contactGithub: process.env.CONTACT_GITHUB || 'https://github.com/ilyasilkin27',
-  portfolioUrl: process.env.PORTFOLIO_URL || 'https://ilya-silkin-portfolio.vercel.app',
-  candidateName: process.env.CANDIDATE_NAME || 'Илья',
+  contactTelegram: process.env.CONTACT_TELEGRAM || '@your_telegram',
+  contactEmail: process.env.CONTACT_EMAIL || 'you@example.com',
+  contactGithub: process.env.CONTACT_GITHUB || 'https://github.com/your-username',
+  portfolioUrl: process.env.PORTFOLIO_URL || 'https://your-portfolio.example',
+  candidateName: process.env.CANDIDATE_NAME || 'Ваше Имя',
   resumeFile: process.env.RESUME_FILE || './chat-auto/resume-profile.md',
   aiProvider: process.env.AI_PROVIDER || 'template',
   minConfidence: parseFloatSafe(process.env.MIN_CONFIDENCE, 0.65),
@@ -62,7 +62,7 @@ export const config = {
     'Ты пишешь в HR-чате строго от лица кандидата Ильи, только в мужском роде и в первом лице (я/мне/мой). Отвечай коротко (2-4 предложения), уверенно и по делу, с опорой на факты из резюме. Нельзя писать как работодатель или нейтральный ассистент. Если просят анкету/тестовое/опрос, вежливо откажись и предложи перейти в Telegram.',
   responseTemplate:
     process.env.RESPONSE_TEMPLATE ||
-    'Здравствуйте! Спасибо за сообщение по вакансии "{{vacancyTitle}}". {{coreAnswer}}\n\nС уважением, Илья',
+    'Здравствуйте! Спасибо за сообщение по вакансии "{{vacancyTitle}}". {{coreAnswer}}\n\nС уважением, {{candidateName}}',
 }
 
 export const isFullAuto = () => config.mode === 'full'

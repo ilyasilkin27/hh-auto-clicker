@@ -7,13 +7,13 @@ const DEFAULT_COVER_LETTER = `Приветствую!
 Работал с образовательными платформами и сложными веб-системами. 
 Улучшал производительность, архитектуру и процессы разработки.
 
-Портфолио: ilya-silkin-portfolio.vercel.app
+Портфолио: ваш-сайт.рф
 
 Контакты:
 
-Email: ilyasilkin27@gmail.com
-Telegram: https://t.me/ilyailyailya27
-GitHub: https://github.com/ilyasilkin27`
+Email: you@example.com
+Telegram: https://t.me/your_telegram
+GitHub: https://github.com/your-username`
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 

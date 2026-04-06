@@ -569,7 +569,7 @@ const isLikelyOutgoingOrSystemText = text => {
 
   const patterns = [
     /приветствую!\s*я\s*фронтенд-разработчик/iu,
-    /портфолио:\s*ilya-silkin-portfolio\.vercel\.app/iu,
+    /портфолио:\s*\S+/iu,
     /telegram:\s*https:\/\/t\.me\//iu,
     /github:\s*https:\/\/github\.com\//iu,
     /^без\s+сопроводительного\s+письма$/iu,

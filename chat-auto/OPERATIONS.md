@@ -1,5 +1,9 @@
 # Эксплуатация Chat Auto Cycle
 
+Подробная документация по n8n-оркестрации и daily-циклам:
+
+- [n8n/N8N_DETAILED_GUIDE.md](../n8n/N8N_DETAILED_GUIDE.md)
+
 ## 1) Запуск
 
 ```bash
@@ -78,3 +82,58 @@ npm run chat:report
 - autoReplies
 - escalations
 - errors
+
+## 10) n8n локально (daily orchestration)
+
+1. Подготовить env:
+
+```bash
+cp n8n/.env.example n8n/.env
+```
+
+2. Проверить ключевые поля в `n8n/.env`:
+
+- `AUTO_MODE=safe` на этапе пилота
+- `CHAT_ADAPTER=playwright`
+- `COOKIES_PATH=./playwright/cookies.json`
+- `AI_PROVIDER` и ключи (`GROQ_API_KEY` или `OPENAI_API_KEY`)
+
+3. Запустить n8n + postgres:
+
+```bash
+cd n8n
+docker compose up -d
+```
+
+4. Открыть UI: `http://localhost:5678`.
+5. Импортировать workflow: `n8n/workflows/chat-auto-orchestration.json`.
+6. Нажать `Execute workflow` для ручной проверки через узел `Manual Run Trigger`.
+7. После успешного прогона перевести workflow в `Active`.
+
+Примечание: контейнер n8n запускает команды внутри смонтированного проекта `/files/hh-auto-clicker`, поэтому изменения кода и env подхватываются без пересборки образа.
+
+## 11) n8n локально (daily отклики)
+
+Импортируйте второй workflow:
+
+- `n8n/workflows/apply-daily-orchestration.json`
+
+Он запускает команду:
+
+```bash
+npm run -s start:pw:batch:daily
+```
+
+Параметры daily-пакета:
+
+1. источник резюме: `./playwright/resumes.json`
+2. `--concurrency 2` (два резюме параллельно)
+3. `--max 100` (до 100 откликов на каждое резюме)
+4. `--maxAttempts 400`
+5. `--maxFailStreak 10`
+
+Рекомендация:
+
+1. Сначала сделать ручной запуск через `Manual Apply Trigger`
+2. Проверить логи выполнения
+3. Только после этого включать workflow в `Active`

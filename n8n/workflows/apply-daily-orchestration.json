@@ -1,0 +1,94 @@
+{
+  "id": "apply-daily-cycle",
+  "name": "HH Apply Daily Cycle",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 24
+            }
+          ]
+        }
+      },
+      "id": "apply-cron-1",
+      "name": "Daily Apply Cron",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        180,
+        260
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "apply-manual-1",
+      "name": "Manual Apply Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        180,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://runner:3001/run/apply-daily",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.RUNNER_AUTH_TOKEN}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 7200000
+        }
+      },
+      "id": "apply-run-1",
+      "name": "Run Daily Apply Batch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 15000,
+      "position": [
+        470,
+        360
+      ]
+    }
+  ],
+  "connections": {
+    "Daily Apply Cron": {
+      "main": [
+        [
+          {
+            "node": "Run Daily Apply Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Apply Trigger": {
+      "main": [
+        [
+          {
+            "node": "Run Daily Apply Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

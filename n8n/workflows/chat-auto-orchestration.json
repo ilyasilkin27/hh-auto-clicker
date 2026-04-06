@@ -1,49 +1,48 @@
 {
-  "name": "HH Chat Auto Orchestration",
+  "id": "chat-auto-daily-cycle",
+  "name": "HH Chat Daily Cycle",
   "nodes": [
     {
       "parameters": {
         "rule": {
           "interval": [
             {
-              "field": "minutes",
-              "minutesInterval": 1
+              "field": "hours",
+              "hoursInterval": 24
             }
           ]
         }
       },
       "id": "cron-1",
-      "name": "Cron",
+      "name": "Daily Cron",
       "type": "n8n-nodes-base.cron",
       "typeVersion": 1,
       "position": [
-        180,
+        170,
         280
       ]
     },
     {
       "parameters": {
-        "command": "cd /files/hh-auto-clicker && node chat-auto/cli/poll-new-messages.js"
+        "method": "POST",
+        "url": "http://runner:3001/run/chat-process",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.RUNNER_AUTH_TOKEN}}"
+            }
+          ]
+        },
+        "options": {}
       },
-      "id": "poll-1",
-      "name": "Poll New Messages",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
+      "id": "process-1",
+      "name": "Run Chat Cycle",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
       "position": [
-        420,
-        280
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const body = JSON.parse($json.stdout || '{\"messages\":[]}');\nreturn body.messages.map(m => ({ json: m }));"
-      },
-      "id": "filter-1",
-      "name": "Filter Incoming",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        660,
+        430,
         280
       ]
     },
@@ -52,12 +51,60 @@
         "command": "cd /files/hh-auto-clicker && node chat-auto/cli/process-cycle.js"
       },
       "id": "ai-send-log-1",
-      "name": "AI Generate + Send + Log",
-      "type": "n8n-nodes-base.executeCommand",
+      "name": "Has Failures?",
+      "type": "n8n-nodes-base.if",
       "typeVersion": 1,
       "position": [
-        930,
+        690,
         280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://runner:3001/run/chat-report",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.RUNNER_AUTH_TOKEN}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "report-1",
+      "name": "Report OK Path",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        950,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://runner:3001/run/chat-report",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.RUNNER_AUTH_TOKEN}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "error-report-1",
+      "name": "Report Error Path",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        950,
+        380
       ]
     },
     {
@@ -77,96 +124,35 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
       "position": [
-        1190,
+        690,
         280
-      ]
-    },
-    {
-      "parameters": {
-        "command": "cd /files/hh-auto-clicker && node chat-auto/cli/daily-report.js"
-      },
-      "id": "report-1",
-      "name": "Log Summary",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
-      "position": [
-        1420,
-        180
-      ]
-    },
-    {
-      "parameters": {
-        "command": "cd /files/hh-auto-clicker && node chat-auto/cli/daily-report.js"
-      },
-      "id": "error-report-1",
-      "name": "Error Alert Path",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
-      "position": [
-        1420,
-        380
       ]
     },
     {
       "parameters": {},
       "id": "manual-1",
-      "name": "Manual Approve Trigger",
+      "name": "Manual Run Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
-        190,
-        540
-      ]
-    },
-    {
-      "parameters": {
-        "command": "cd /files/hh-auto-clicker && node chat-auto/cli/send-reply.js --messageId {{$json.messageId}}"
-      },
-      "id": "approve-1",
-      "name": "Approve Draft And Send",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
-      "position": [
-        470,
+        170,
         540
       ]
     }
   ],
   "connections": {
-    "Cron": {
+    "Daily Cron": {
       "main": [
         [
           {
-            "node": "Poll New Messages",
+            "node": "Run Chat Cycle",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Poll New Messages": {
-      "main": [
-        [
-          {
-            "node": "Filter Incoming",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Filter Incoming": {
-      "main": [
-        [
-          {
-            "node": "AI Generate + Send + Log",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "AI Generate + Send + Log": {
+    "Run Chat Cycle": {
       "main": [
         [
           {
@@ -177,29 +163,29 @@
         ]
       ]
     },
-    "Has Failures?": {
+    "Manual Run Trigger": {
       "main": [
         [
           {
-            "node": "Error Alert Path",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Log Summary",
+            "node": "Run Chat Cycle",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Manual Approve Trigger": {
+    "Has Failures?": {
       "main": [
         [
           {
-            "node": "Approve Draft And Send",
+            "node": "Report Error Path",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report OK Path",
             "type": "main",
             "index": 0
           }

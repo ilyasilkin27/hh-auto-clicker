@@ -1,0 +1,214 @@
+{
+  "name": "HH Chat Auto Orchestration",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "cron-1",
+      "name": "Cron",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        180,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "command": "cd /files/hh-auto-clicker && node chat-auto/cli/poll-new-messages.js"
+      },
+      "id": "poll-1",
+      "name": "Poll New Messages",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        420,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = JSON.parse($json.stdout || '{\"messages\":[]}');\nreturn body.messages.map(m => ({ json: m }));"
+      },
+      "id": "filter-1",
+      "name": "Filter Incoming",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "command": "cd /files/hh-auto-clicker && node chat-auto/cli/process-cycle.js"
+      },
+      "id": "ai-send-log-1",
+      "name": "AI Generate + Send + Log",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        930,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{JSON.parse($json.stdout || '{}').summary?.failed || 0}}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "if-1",
+      "name": "Has Failures?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1190,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "command": "cd /files/hh-auto-clicker && node chat-auto/cli/daily-report.js"
+      },
+      "id": "report-1",
+      "name": "Log Summary",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1420,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "command": "cd /files/hh-auto-clicker && node chat-auto/cli/daily-report.js"
+      },
+      "id": "error-report-1",
+      "name": "Error Alert Path",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1420,
+        380
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "manual-1",
+      "name": "Manual Approve Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        190,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "command": "cd /files/hh-auto-clicker && node chat-auto/cli/send-reply.js --messageId {{$json.messageId}}"
+      },
+      "id": "approve-1",
+      "name": "Approve Draft And Send",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        470,
+        540
+      ]
+    }
+  ],
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "Poll New Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll New Messages": {
+      "main": [
+        [
+          {
+            "node": "Filter Incoming",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Incoming": {
+      "main": [
+        [
+          {
+            "node": "AI Generate + Send + Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Generate + Send + Log": {
+      "main": [
+        [
+          {
+            "node": "Has Failures?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Failures?": {
+      "main": [
+        [
+          {
+            "node": "Error Alert Path",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Approve Trigger": {
+      "main": [
+        [
+          {
+            "node": "Approve Draft And Send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

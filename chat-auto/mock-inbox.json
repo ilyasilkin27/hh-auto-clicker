@@ -1,0 +1,10 @@
+[
+  {
+    "chatId": "chat-101",
+    "messageId": "msg-101",
+    "senderType": "candidate",
+    "vacancyTitle": "Frontend Developer",
+    "messageText": "Здравствуйте! Подскажите, пожалуйста, стек и этапы интервью.",
+    "receivedAt": "2026-04-06T12:00:00.000Z"
+  }
+]

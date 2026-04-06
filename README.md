@@ -203,3 +203,159 @@ npm run start:pw:batch:headed -- --resumes ./playwright/resumes.json --cookies .
 1. Скрипты отправляют реальные отклики с вашего аккаунта.
 2. Перед массовым запуском делайте короткий тест.
 3. Высокий параллелизм и частые запросы повышают шанс ограничений со стороны hh.ru.
+
+## Полностью автоматический чат-цикл
+
+Подробный гайд с нуля (установка, настройка, режимы, команды, безопасность):
+
+- [CHAT_AUTO_GUIDE.md](CHAT_AUTO_GUIDE.md)
+
+Добавлен модуль `chat-auto/` для цикла:
+
+1. poll новых сообщений,
+2. фильтрация рисков,
+3. генерация ответа,
+4. отправка (или draft-only),
+5. логирование и алерты.
+
+### Контракт данных между шагами
+
+Единый JSON-формат описан в `chat-auto/contract.md`.
+
+Обязательные поля результата каждого шага:
+
+1. `chatId`
+2. `messageId`
+3. `senderType`
+4. `vacancyTitle`
+5. `messageText`
+6. `receivedAt`
+7. `confidence`
+8. `replyText`
+9. `status`
+10. `errorReason`
+
+### Команды
+
+```bash
+npm run chat:poll
+npm run chat:process
+npm run chat:drafts
+npm run chat:approve -- --messageId <MESSAGE_ID>
+npm run chat:report
+npm run chat:test:e2e
+```
+
+### Режимы safe/full
+
+Переключение одной переменной окружения:
+
+```bash
+AUTO_MODE=safe npm run chat:process
+AUTO_MODE=full npm run chat:process
+```
+
+1. `safe` - автоответы не отправляются, создаются draft.
+2. `full` - автоотправка включена, но рисковые кейсы уходят в manual review.
+
+### Дедупликация и состояние
+
+Состояние хранится в `chat-auto/state.json`:
+
+1. `processedMessageIds` предотвращает повторную обработку.
+2. `draftsByMessageId` хранит ответы для ручного approve.
+3. `sentByMessageId` хранит историю отправок.
+4. `metrics` хранит антиспам-счетчики и последний момент отправки.
+
+### AI-шаблон и system prompt
+
+Настраивается в `.env`:
+
+1. `SYSTEM_PROMPT`
+2. `RESPONSE_TEMPLATE`
+3. `AI_PROVIDER=template|openai`
+4. `OPENAI_API_KEY`, `OPENAI_MODEL`
+5. `MIN_CONFIDENCE`
+
+Можно использовать Groq вместо OpenAI:
+
+1. `AI_PROVIDER=groq`
+2. `GROQ_API_KEY`
+3. `GROQ_MODEL` (например, `openai/gpt-oss-120b`)
+4. `CONTACT_TELEGRAM` для шаблона перехода в Telegram
+5. `RESUME_FILE` путь к резюме (pdf/txt/md), чтобы ответы опирались на ваши факты
+6. `CANDIDATE_NAME` имя кандидата для ответов от первого лица
+
+### Правила безопасности
+
+Реализовано:
+
+1. стоп-темы (персональные/платежные данные, токсичные и 18+ запросы),
+2. блок при низкой уверенности,
+3. перевод в `manual_review` без автоотправки,
+4. алерты при `fail` и low confidence.
+
+### Ретраи, backoff и антиспам
+
+1. До 3 попыток отправки (`MAX_RETRIES`),
+2. экспоненциальный backoff (`BASE_BACKOFF_MS`),
+3. лимит ответов в час (`MAX_REPLIES_PER_HOUR`),
+4. пауза между ответами (`MIN_SECONDS_BETWEEN_REPLIES`).
+
+### Логирование и отчеты
+
+1. JSONL-лог: `chat-auto/automation-log.jsonl`.
+2. Отчеты: `chat-auto/reports/report-YYYY-MM-DD.json`.
+3. По любому `messageId` можно восстановить путь обработки.
+
+### Ошибки и алерты
+
+Поддержаны коды ошибок:
+
+1. `NETWORK_ERROR`
+2. `AUTH_ERROR`
+3. `VALIDATION_ERROR`
+4. `RATE_LIMIT_ERROR`
+5. `RISK_BLOCKED`
+6. `EMPTY_REPLY`
+7. `UNKNOWN_ERROR`
+
+Алерты:
+
+1. Telegram (`ALERT_TELEGRAM_BOT_TOKEN`, `ALERT_TELEGRAM_CHAT_ID`),
+2. Webhook (`ALERT_WEBHOOK_URL`) - можно направить в почту через n8n.
+
+### n8n orchestration
+
+Импортируемый workflow:
+
+1. `n8n/workflows/chat-auto-orchestration.json`
+
+### Режим без API (через HTML HH Chat)
+
+Если API-токенов нет, используйте Playwright-режим:
+
+1. `CHAT_ADAPTER=playwright`
+2. `HH_CHAT_URL=https://hh.ru/chat`
+3. `COOKIES_PATH=./playwright/cookies.json`
+
+Poll и send в этом режиме идут через DOM-селекторы страницы чатов, аналогично скриптам автооткликов.
+
+Цепочка:
+
+1. Cron -> Poll New Messages -> Filter Incoming -> AI Generate + Send + Log -> Log/Alert
+2. Отдельная ветка `Manual Approve Trigger -> Approve Draft And Send`.
+
+### E2E сценарии
+
+Скрипт `npm run chat:test:e2e` проверяет:
+
+1. happy path,
+2. дедупликацию,
+3. стоп-темы,
+4. пустой ввод,
+5. режимы safe/full.
+
+### Эксплуатация
+
+Полный runbook: `chat-auto/OPERATIONS.md`.

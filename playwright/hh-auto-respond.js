@@ -17,6 +17,12 @@ GitHub: https://github.com/ilyasilkin27`
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
+const DAILY_LIMIT_PATTERNS = [
+  /24\s*час[ао]в[^\n\r]*200\s*отклик/iu,
+  /исчерпал[аи]?\s+лимит\s+отклик/iu,
+  /попробуйте\s+отправить\s+отклик\s+позднее/iu,
+]
+
 const parseArgs = () => {
   const args = process.argv.slice(2)
   const parsed = {}
@@ -454,7 +460,24 @@ const buildSearchUrlByQuery = (query, resumeId = '') => {
   return `https://hh.ru/search/vacancy?${params.toString()}`
 }
 
+const hasDailyResponseLimitMessage = async page => {
+  const bodyText = await page
+    .locator('body')
+    .innerText({ timeout: 2000 })
+    .catch(() => '')
+
+  if (!bodyText) {
+    return false
+  }
+
+  return DAILY_LIMIT_PATTERNS.every(pattern => pattern.test(bodyText))
+}
+
 const tryRespondToFirstVacancy = async (page, coverLetter, debug = false) => {
+  if (await hasDailyResponseLimitMessage(page)) {
+    return 'limit'
+  }
+
   // Ждём появления хотя бы одной карточки вакансии
   await page
     .locator('[data-qa="vacancy-serp__vacancy"]')
@@ -483,11 +506,16 @@ const tryRespondToFirstVacancy = async (page, coverLetter, debug = false) => {
     console.log(
       'Кнопка Откликнуться не найдена. Пробую скрыть первую вакансию.',
     )
-    return hideFirstVacancy(page)
+    const hidden = await hideFirstVacancy(page)
+    return hidden ? 'hidden' : 'failed'
   }
 
   await respondButton.click()
   await delay(1200)
+
+  if (await hasDailyResponseLimitMessage(page)) {
+    return 'limit'
+  }
 
   if (debug) {
     await page.screenshot({
@@ -509,23 +537,23 @@ const tryRespondToFirstVacancy = async (page, coverLetter, debug = false) => {
   await clickIfVisible(page, '[data-qa="relocation-warning-confirm"]', 1200)
 
   if (await handleQuestionnaireBlocker(page)) {
-    return false
+    return 'failed'
   }
 
   if (await handleMobileBottomSheet(page, coverLetter)) {
-    return true
+    return 'success'
   }
 
   if (await typeCoverLetterAndSubmitPopup(page, coverLetter)) {
-    return true
+    return 'success'
   }
 
   if (await clickAttachLetterAndSubmit(page, coverLetter)) {
-    return true
+    return 'success'
   }
 
   await page.keyboard.press('Escape').catch(() => {})
-  return false
+  return 'failed'
 }
 
 const main = async () => {
@@ -604,6 +632,7 @@ const main = async () => {
     let sent = 0
     let attempts = 0
     let failStreak = 0
+    let stoppedByDailyLimit = false
 
     while (sent < maxResponses && attempts < maxAttempts) {
       await ensureVacancySearchPage(page, targetSearchUrl)
@@ -613,13 +642,31 @@ const main = async () => {
         `Попытка ${attempts}/${maxAttempts} (успешно: ${sent}/${maxResponses})`,
       )
 
-      const success = await tryRespondToFirstVacancy(
+      const respondResult = await tryRespondToFirstVacancy(
         page,
         coverLetter,
         debug && attempts === 1,
       )
 
-      if (success) {
+      if (respondResult === 'limit') {
+        console.warn(
+          'Предупреждение: у вас исчерпан лимит откликов (не более 200 за 24 часа). Попробуйте позже.',
+        )
+        stoppedByDailyLimit = true
+        break
+      }
+
+      if (respondResult === 'success') {
+        await delay(1200)
+
+        if (await hasDailyResponseLimitMessage(page)) {
+          console.warn(
+            'Предупреждение: обнаружен текст о суточном лимите откликов (200 за 24 часа). Останавливаю отправку.',
+          )
+          stoppedByDailyLimit = true
+          break
+        }
+
         sent += 1
         failStreak = 0
         console.log(`Успех. Отправлено: ${sent}/${maxResponses}`)
@@ -650,6 +697,12 @@ const main = async () => {
     if (sent < maxResponses && attempts >= maxAttempts) {
       console.log(
         `Остановлено по лимиту попыток: ${attempts}. Успешно отправлено: ${sent}/${maxResponses}`,
+      )
+    }
+
+    if (stoppedByDailyLimit) {
+      console.log(
+        `Остановлено из-за суточного лимита откликов. Успешно отправлено: ${sent}/${maxResponses}`,
       )
     }
 

@@ -130,8 +130,6 @@ const clickIfVisible = async (page, selector, timeout = 1000) => {
 
 const ensureVacancySearchPage = async (page, searchUrl) => {
   if (page.url().includes('/search/vacancy')) {
-    await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {})
-    await delay(1200)
     await dismissOverlay(page)
     return
   }
@@ -499,7 +497,9 @@ const tryRespondToFirstVacancy = async (page, coverLetter, debug = false) => {
   }
 
   const respondButton = page
-    .locator('[data-qa="vacancy-serp__vacancy_response"]')
+    .locator(
+      '[data-qa="vacancy-serp__vacancy_response"], button:has-text("Откликнуться на вакансию")',
+    )
     .first()
 
   if (!(await respondButton.count())) {
@@ -510,8 +510,11 @@ const tryRespondToFirstVacancy = async (page, coverLetter, debug = false) => {
     return hidden ? 'hidden' : 'failed'
   }
 
+  console.log('Нажимаем кнопку откликнуться на вакансию')
   await respondButton.click()
   await delay(1200)
+
+  await clickIfVisible(page, 'button:has-text("Все равно откликнуться")', 2000)
 
   if (await hasDailyResponseLimitMessage(page)) {
     return 'limit'

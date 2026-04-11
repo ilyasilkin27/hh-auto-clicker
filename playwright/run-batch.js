@@ -49,6 +49,7 @@ const runWorker = ({
   maxFailStreak,
   headed,
   debug,
+  desktop,
   cover,
   query,
 }) => {
@@ -81,6 +82,10 @@ const runWorker = ({
 
   if (debug) {
     args.push('--debug')
+  }
+
+  if (desktop) {
+    args.push('--desktop')
   }
 
   const child = spawn(process.execPath, args, {
@@ -169,6 +174,7 @@ const main = async () => {
   const concurrency = Math.min(5, Math.max(1, concurrencyRaw))
   const headed = Boolean(args.headed)
   const debug = Boolean(args.debug)
+  const desktop = Boolean(args.desktop || args.device === 'desktop')
   const cover = args.cover
   const query = args.query
 

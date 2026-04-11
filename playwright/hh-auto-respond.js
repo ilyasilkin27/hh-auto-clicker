@@ -1,19 +1,23 @@
 import fs from 'node:fs/promises'
+import path from 'node:path'
 import { chromium, devices } from 'playwright'
 
-const DEFAULT_COVER_LETTER = `Приветствую!
+const LOG_FILE_PATH = path.resolve(process.cwd(), 'hh-responses-log.json')
+let jsonEventLog = []
+
+const DEFAULT_COVER_LETTER = `Добрый день!
 
 Я фронтенд-разработчик на React и TypeScript.
 Работал с образовательными платформами и сложными веб-системами. 
 Улучшал производительность, архитектуру и процессы разработки.
 
-Портфолио: ваш-сайт.рф
+Портфолио: ilya-silkin-portfolio.vercel.app
 
 Контакты:
 
-Email: you@example.com
-Telegram: https://t.me/your_telegram
-GitHub: https://github.com/your-username`
+Email: ilyasilkin27@gmail.com
+Telegram: https://t.me/ilyailyailya27
+GitHub: https://github.com/ilyasilkin27`
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -21,6 +25,8 @@ const DAILY_LIMIT_PATTERNS = [
   /24\s*час[ао]в[^\n\r]*200\s*отклик/iu,
   /исчерпал[аи]?\s+лимит\s+отклик/iu,
   /попробуйте\s+отправить\s+отклик\s+позднее/iu,
+  /исчерпан[аи]?\s+лимит/iu,
+  /200\s*отклик/iu,
 ]
 
 const parseArgs = () => {
@@ -113,9 +119,7 @@ const readCookiesFromFile = async filePath => {
 
 const clickIfVisible = async (page, selector, timeout = 1000) => {
   const locator = page.locator(selector).first()
-  const count = await locator.count()
-
-  if (!count) {
+  if (!(await locator.count())) {
     return false
   }
 
@@ -124,8 +128,127 @@ const clickIfVisible = async (page, selector, timeout = 1000) => {
     await locator.click()
     return true
   } catch {
+    try {
+      await locator.scrollIntoViewIfNeeded({ timeout })
+      await locator.click({ force: true, timeout })
+      return true
+    } catch {
+      return false
+    }
+  }
+}
+
+const safeClick = async (locator, timeout = 5000) => {
+  if (!(await locator.count())) {
     return false
   }
+
+  try {
+    await locator.waitFor({ state: 'visible', timeout })
+    await locator.click({ timeout })
+    return true
+  } catch {
+    try {
+      await locator.scrollIntoViewIfNeeded({ timeout })
+      await locator.click({ force: true, timeout })
+      return true
+    } catch {
+      return false
+    }
+  }
+}
+
+const inspectSelectors = async (page, selectors) => {
+  const results = {}
+  for (const [label, selector] of Object.entries(selectors)) {
+    results[label] = await page.locator(selector).count().catch(() => 0)
+  }
+  return results
+}
+
+const debugInspectSelectors = async (page, debug, selectors) => {
+  if (!debug) {
+    return
+  }
+
+  const results = await inspectSelectors(page, selectors)
+  console.log(
+    `DEBUG selector counts: ${Object.entries(results)
+      .map(([label, count]) => `${label}=${count}`)
+      .join(', ')}`,
+  )
+}
+
+const writeJsonLog = async () => {
+  await fs.writeFile(LOG_FILE_PATH, `${JSON.stringify(jsonEventLog, null, 2)}\n`, 'utf8')
+}
+
+const logEvent = async (eventType, payload = {}) => {
+  jsonEventLog.push({
+    timestamp: new Date().toISOString(),
+    eventType,
+    ...payload,
+  })
+  await writeJsonLog()
+}
+
+const fillCoverLetterInVisibleField = async (page, coverLetter) => {
+  const textareaSelectors = [
+    '[data-qa="vacancy-response-popup-form-letter-input"]:visible',
+    'textarea[name="text"]:visible',
+    'textarea[data-qa*="letter"]:visible',
+    'textarea[name*="letter"]:visible',
+    'textarea[name^="task_"][name$="_text"]:visible',
+    'textarea:visible',
+  ]
+
+  for (const selector of textareaSelectors) {
+    const textarea = page.locator(selector).first()
+    if (!(await textarea.count())) {
+      continue
+    }
+
+    try {
+      await textarea.scrollIntoViewIfNeeded({ timeout: 3000 })
+      await textarea.click({ timeout: 3000 })
+      await textarea.fill(coverLetter, { timeout: 5000 })
+      await textarea.evaluate((el, value) => {
+        el.dispatchEvent(new Event('input', { bubbles: true }))
+        el.dispatchEvent(new Event('change', { bubbles: true }))
+      }, coverLetter)
+      await delay(500)
+      return true
+    } catch {
+      // continue to next selector
+    }
+  }
+
+  const contentEditableSelectors = [
+    'div[contenteditable="true"]:visible',
+    '[contenteditable="true"]:visible',
+    'div[contenteditable]:visible',
+    '[contenteditable]:visible',
+    '[role="textbox"]:visible',
+  ]
+
+  for (const selector of contentEditableSelectors) {
+    const contentEditable = page.locator(selector).first()
+    if (!(await contentEditable.count())) {
+      continue
+    }
+
+    try {
+      await contentEditable.scrollIntoViewIfNeeded({ timeout: 3000 })
+      await contentEditable.click({ timeout: 3000 })
+      await page.keyboard.type(coverLetter, { delay: 15 })
+      await delay(500)
+      return true
+    } catch {
+      // continue to next selector
+    }
+  }
+
+  return false
 }
 
 const ensureVacancySearchPage = async (page, searchUrl) => {
@@ -137,6 +260,48 @@ const ensureVacancySearchPage = async (page, searchUrl) => {
   await page.goto(searchUrl, { waitUntil: 'domcontentloaded' }).catch(() => {})
   await delay(1200)
   await dismissOverlay(page)
+}
+
+const extractVacancyIdFromUrl = url => {
+  if (!url || typeof url !== 'string') return ''
+
+  try {
+    const parsed = new URL(url, 'https://hh.ru')
+    const pathMatch = parsed.pathname.match(/\/vacancy\/(\d+)/)
+    if (pathMatch) {
+      return pathMatch[1]
+    }
+
+    const queryKeys = ['vacancy', 'vacancy_id', 'vacancyId', 'id']
+    for (const key of queryKeys) {
+      const value = parsed.searchParams.get(key)
+      if (value && /^\d+$/.test(value)) {
+        return value
+      }
+    }
+  } catch {
+    return ''
+  }
+
+  return ''
+}
+
+const getVacancyIdFromPage = async page => {
+  const idFromUrl = extractVacancyIdFromUrl(page.url())
+  if (idFromUrl) return idFromUrl
+
+  const firstLink = page
+    .locator(
+      '[data-qa="vacancy-serp__vacancy"]:visible a[href*="/vacancy/"]:visible, a[href*="/vacancy/"]:visible',
+    )
+    .first()
+
+  if (!(await firstLink.count())) {
+    return ''
+  }
+
+  const href = await firstLink.getAttribute('href')
+  return extractVacancyIdFromUrl(href)
 }
 
 const goToNextSearchPage = async page => {
@@ -164,26 +329,6 @@ const goToNextSearchPage = async page => {
   return true
 }
 
-const fillCoverLetterInVisibleField = async (page, coverLetter) => {
-  const textarea = page
-    .locator(
-      '[data-qa="vacancy-response-popup-form-letter-input"]:visible, textarea[name="text"]:visible, textarea[name^="task_"][name$="_text"]:visible',
-    )
-    .first()
-
-  if (!(await textarea.count())) {
-    return false
-  }
-
-  try {
-    await textarea.fill(coverLetter, { timeout: 5000 })
-    await delay(500)
-    return true
-  } catch {
-    return false
-  }
-}
-
 // --- Обработка мобильного bottom sheet ---
 const handleMobileBottomSheet = async (page, coverLetter) => {
   const submitBtn = page
@@ -200,7 +345,11 @@ const handleMobileBottomSheet = async (page, coverLetter) => {
   await fillCoverLetterInVisibleField(page, coverLetter)
 
   if (!(await submitBtn.isEnabled())) return false
-  await submitBtn.click()
+  const clicked = await safeClick(submitBtn, 5000)
+  if (!clicked) {
+    return false
+  }
+
   await delay(1500)
   return true
 }
@@ -213,7 +362,9 @@ const typeCoverLetterAndSubmitPopup = async (page, coverLetter) => {
   }
 
   const submit = page
-    .locator('[data-qa="vacancy-response-submit-popup"]:visible')
+    .locator(
+      '[data-qa="vacancy-response-submit-popup"]:visible, button:has-text("Отправить"):visible, button:has-text("Отправить отклик"):visible',
+    )
     .first()
   if (!(await submit.count())) {
     return false
@@ -223,14 +374,20 @@ const typeCoverLetterAndSubmitPopup = async (page, coverLetter) => {
     return false
   }
 
-  await submit.click()
+  const clicked = await safeClick(submit, 5000)
+  if (!clicked) {
+    return false
+  }
+
   await delay(1500)
   return true
 }
 
 const clickAttachLetterAndSubmit = async (page, coverLetter) => {
   const attachButton = page
-    .locator('[data-qa="vacancy-response-letter-toggle"]')
+    .locator(
+      '[data-qa="vacancy-response-letter-toggle"], [data-qa*="letter-toggle"], button:has-text("Добавить сопроводительное письмо"), button:has-text("Прикрепить сопроводительное письмо"), button:has-text("Добавить письмо"), button:has-text("Добавить сопроводительное")',
+    )
     .first()
 
   if (!(await attachButton.count())) {
@@ -253,6 +410,15 @@ const clickAttachLetterAndSubmit = async (page, coverLetter) => {
     }
   }
 
+  const coverLetterFieldSelector =
+    '[data-qa="vacancy-response-popup-form-letter-input"]:visible, textarea[name="text"]:visible, textarea[data-qa*="letter"]:visible, textarea[name*="letter"]:visible, textarea[name^="task_"][name$="_text"]:visible, textarea:visible, div[contenteditable]:visible, [contenteditable]:visible, [role="textbox"]:visible'
+
+  await page
+    .locator(coverLetterFieldSelector)
+    .first()
+    .waitFor({ state: 'visible', timeout: 5000 })
+    .catch(() => {})
+
   await delay(1200)
 
   const filled = await fillCoverLetterInVisibleField(page, coverLetter)
@@ -261,19 +427,36 @@ const clickAttachLetterAndSubmit = async (page, coverLetter) => {
   }
 
   const sendButton = page
-    .locator('[data-qa="vacancy-response-letter-submit"]:visible')
+    .locator(
+      '[data-qa="vacancy-response-letter-submit"]:visible, button:has-text("Отправить"):visible, button:has-text("Отправить отклик"):visible',
+    )
     .first()
   if (!(await sendButton.count())) {
     return false
   }
 
-  await sendButton.click()
+  const clicked = await safeClick(sendButton, 5000)
+  if (!clicked) {
+    return false
+  }
+
   await delay(1500)
   return true
 }
 
-const hideFirstVacancy = async page => {
-  const card = page.locator('[data-qa="vacancy-serp__vacancy"]:visible').first()
+const hideFirstVacancy = async (page, vacancyId = '') => {
+  let card = page.locator('[data-qa="vacancy-serp__vacancy"]:visible').first()
+
+  if (vacancyId) {
+    const targetedCard = page
+      .locator(
+        `[data-qa="vacancy-serp__vacancy"]:has(a[href*="/vacancy/${vacancyId}"]):visible`,
+      )
+      .first()
+    if (await targetedCard.count()) {
+      card = targetedCard
+    }
+  }
 
   if (!(await card.count())) {
     return false
@@ -281,32 +464,64 @@ const hideFirstVacancy = async page => {
 
   const hideSelectors = [
     '[data-qa="vacancy__blacklist-show-add_narrow-card"]',
+    '[data-qa="vacancy__blacklist-show-add"]',
+    '[data-qa*="blacklist-show-add"]',
     '[data-qa*="hide"]',
     '[data-qa*="blacklist"]',
     'button[aria-label*="скрыть" i]',
     'button[aria-label*="hide" i]',
+    'button:has-text("Скрыть")',
+    'button:has-text("Не подходит")',
+    'button:has-text("Не интересна")',
+    'button:has-text("Не нравится")',
+    'button:has-text("Отклонить")',
+    'button:has-text("Исключить")',
   ]
 
   let openedMenu = false
 
   for (const selector of hideSelectors) {
-    const target = card.locator(`${selector}:visible`).first()
+    const target = card.locator(`${selector}`).first()
     if (!(await target.count())) {
       continue
     }
 
     try {
-      await target.click()
+      await target.click({ timeout: 3000 })
       openedMenu = true
       break
     } catch {
       try {
-        await target.scrollIntoViewIfNeeded()
-        await target.click({ force: true })
+        await target.scrollIntoViewIfNeeded({ timeout: 3000 })
+        await target.click({ force: true, timeout: 3000 })
         openedMenu = true
         break
       } catch {
         // continue
+      }
+    }
+  }
+
+  if (!openedMenu) {
+    for (const selector of hideSelectors) {
+      const target = page.locator(selector).first()
+      if (!(await target.count())) {
+        continue
+      }
+
+      try {
+        await target.click({ timeout: 3000 })
+        openedMenu = true
+        break
+      } catch {
+        try {
+          await target.scrollIntoViewIfNeeded({ timeout: 3000 })
+          await target.click({ force: true, timeout: 3000 })
+          openedMenu = true
+          break
+        } catch {
+          // continue
+        }
       }
     }
   }
@@ -319,11 +534,11 @@ const hideFirstVacancy = async page => {
 
   const confirm = page
     .locator(
-      '[data-qa="vacancy__blacklist-menu-add-vacancy"]:visible, [data-qa*="blacklist-menu-add"]:visible, button:has-text("Скрыть эту вакансию"), button:has-text("Скрыть вакансию")',
+      '[data-qa="vacancy__blacklist-menu-add-vacancy"]:visible, [data-qa*="blacklist-menu-add"]:visible, button:has-text("Скрыть эту вакансию"), button:has-text("Скрыть вакансию"), button:has-text("Удалить из списка"), button:has-text("Исключить из поиска")',
     )
     .first()
   if (!(await confirm.count())) {
-    return false
+    return true
   }
 
   await confirm.click().catch(async () => {
@@ -333,13 +548,50 @@ const hideFirstVacancy = async page => {
   return true
 }
 
-const handleQuestionnaireBlocker = async page => {
-  const questionTitle = page
-    .locator('h2[data-qa="title"]:visible')
-    .filter({ hasText: 'Ответьте на' })
-    .first()
+const hasOpenResponseModal = async page => {
+  const modalSelectors = [
+    '[data-qa="vacancy-response-popup-form-letter-input"]:visible',
+    '[data-qa="vacancy-response-submit-popup"]:visible',
+    '[data-qa="vacancy-response-letter-toggle"]:visible',
+    '[data-qa="vacancy-response-letter-submit"]:visible',
+  ]
 
-  if (!(await questionTitle.count())) {
+  return Boolean(await page.locator(modalSelectors.join(',')).count())
+}
+
+const isQuestionnaireBlocker = async page => {
+  const pageUrl = page.url()
+  if (
+    pageUrl.includes('/questionnaire') ||
+    pageUrl.includes('/анкета') ||
+    pageUrl.includes('/questions') ||
+    pageUrl.includes('/vacancy-questionnaire') ||
+    pageUrl.includes('/resume_questionnaire')
+  ) {
+    return true
+  }
+
+  const questionnaireSelectors = [
+    'text=/Ответьте на|Заполните анкету|Обязательные вопросы|Вопросы для соискателя|Анкета|Вопросы для кандидата|Ответьте на вопросы|Какие у вас зарплатные ожидания|Готовы ли вы к работе из офиса/i',
+    'text=/Ваши пожелания|Ваш совокупный опыт|Ваши пожелания к развитию|Опыт в качестве фулстек-разработчика|Опыт работы|Укажите ваш опыт/i',
+    '[data-qa*="questionnaire"]:visible',
+    '[data-qa*="vacancy-response-questionnaire"]:visible',
+    'form[action*="questionnaire"]',
+    'form[action*="resume_questionnaire"]',
+    'form[action*="vacancy_response"]',
+  ]
+
+  for (const selector of questionnaireSelectors) {
+    if (await page.locator(selector).count()) {
+      return true
+    }
+  }
+
+  return false
+}
+
+const handleQuestionnaireBlocker = async (page, searchUrl = 'https://hh.ru/search/vacancy', vacancyId = '') => {
+  if (!(await isQuestionnaireBlocker(page))) {
     return false
   }
 
@@ -353,13 +605,25 @@ const handleQuestionnaireBlocker = async page => {
   }
 
   if (!page.url().includes('/search/vacancy')) {
+    console.log('Возвращаемся на страницу поиска вакансий напрямую.')
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded' }).catch(() => {})
+    await delay(1200)
+  }
+
+  await page
+    .locator('[data-qa="vacancy-serp__vacancy"]:visible')
+    .first()
+    .waitFor({ timeout: 6000 })
+    .catch(() => {})
+
+  if (!page.url().includes('/search/vacancy')) {
     console.log(
       'Не удалось вернуться в выдачу для скрытия вакансии с вопросами.',
     )
     return true
   }
 
-  const hidden = await hideFirstVacancy(page)
+  const hidden = await hideFirstVacancy(page, vacancyId)
   if (!hidden) {
     console.log('Не удалось скрыть вакансию с обязательными вопросами.')
   }
@@ -368,23 +632,41 @@ const handleQuestionnaireBlocker = async page => {
 }
 
 const dismissOverlay = async page => {
-  const overlay = page.locator('[data-qa="modal-overlay"]').first()
+  const overlay = page
+    .locator(
+      '[data-qa="modal-overlay"], [role="dialog"]:visible, div[class*="popup"]:visible',
+    )
+    .first()
   if (!(await overlay.count())) return
 
   await page.keyboard.press('Escape')
   await delay(500)
 
-  if (await overlay.count()) {
-    const closeBtn = page
-      .locator(
-        'button[data-qa*="close"], button[aria-label*="Закрыть" i], button[aria-label*="close" i]',
-      )
-      .first()
-    if (await closeBtn.count()) {
-      await closeBtn.click()
-      await delay(400)
+  if (!(await overlay.count())) {
+    return
+  }
+
+  const closeBtn = overlay
+    .locator(
+      'button[data-qa*="close"]:not([data-qa="snackbar-close-action"]), button[aria-label*="Закрыть" i]:not([data-qa="snackbar-close-action"]), button[aria-label*="close" i]:not([data-qa="snackbar-close-action"]), button:has-text("Закрыть"), button:has-text("Отмена"), button:has-text("Понятно")',
+    )
+    .first()
+
+  if (!(await closeBtn.count())) {
+    return
+  }
+
+  try {
+    await closeBtn.click({ timeout: 5000 })
+  } catch {
+    try {
+      await closeBtn.click({ force: true, timeout: 5000 })
+    } catch {
+      return
     }
   }
+
+  await delay(400)
 }
 
 const navigateToVacancySearch = async (page, resumeId = '') => {
@@ -468,11 +750,23 @@ const hasDailyResponseLimitMessage = async page => {
     return false
   }
 
-  return DAILY_LIMIT_PATTERNS.every(pattern => pattern.test(bodyText))
+  return DAILY_LIMIT_PATTERNS.some(pattern => pattern.test(bodyText))
 }
 
-const tryRespondToFirstVacancy = async (page, coverLetter, debug = false) => {
+const tryRespondToFirstVacancy = async (page, coverLetter, debug = false, searchUrl = 'https://hh.ru/search/vacancy') => {
+  const vacancyId = await getVacancyIdFromPage(page)
+  await logEvent('attempt_start', {
+    pageUrl: page.url(),
+    vacancyId,
+    reason: 'starting_attempt',
+  })
+
   if (await hasDailyResponseLimitMessage(page)) {
+    await logEvent('attempt_end', {
+      result: 'limit',
+      reason: 'daily_limit_detected',
+      pageUrl: page.url(),
+    })
     return 'limit'
   }
 
@@ -496,18 +790,50 @@ const tryRespondToFirstVacancy = async (page, coverLetter, debug = false) => {
     console.log('DEBUG data-qa на странице:', [...new Set(qaAttrs)].join(', '))
   }
 
-  const respondButton = page
-    .locator(
-      '[data-qa="vacancy-serp__vacancy_response"], button:has-text("Откликнуться на вакансию")',
-    )
-    .first()
+  const respondButtonSelector =
+    '[data-qa="vacancy-serp__vacancy_response"], button:has-text("Откликнуться на вакансию"), button:has-text("Откликнуться"), button:has-text("Отклик"), button:has-text("Откликнуться сейчас"), button:has-text("Откликнуться сейчас")'
+
+  if (debug) {
+    await debugInspectSelectors(page, true, {
+      respondButton: respondButtonSelector,
+      vacancyCard: '[data-qa="vacancy-serp__vacancy"]:visible',
+      hiddenVacancyButton:
+        '[data-qa="vacancy__blacklist-show-add_narrow-card"], button:has-text("Скрыть"), button:has-text("Не подходит")',
+    })
+  }
+
+  const respondButton = page.locator(respondButtonSelector).first()
 
   if (!(await respondButton.count())) {
     console.log(
       'Кнопка Откликнуться не найдена. Пробую скрыть первую вакансию.',
     )
-    const hidden = await hideFirstVacancy(page)
-    return hidden ? 'hidden' : 'failed'
+    const selectorDiagnostics = await inspectSelectors(page, {
+      respondButton: respondButtonSelector,
+      vacancyCard: '[data-qa="vacancy-serp__vacancy"]:visible',
+      hideButton: '[data-qa="vacancy__blacklist-show-add_narrow-card"], button:has-text("Скрыть")',
+    })
+    await logEvent('respond_button_missing', {
+      pageUrl: page.url(),
+      vacancyId,
+      selectorDiagnostics,
+      bodySnippet: (await page.locator('body').innerText().catch(() => '')).slice(0, 1200),
+    })
+
+    const hidden = await hideFirstVacancy(page, vacancyId)
+    if (debug && !hidden) {
+      await page.screenshot({
+        path: 'playwright/debug-no-respond-button.png',
+        fullPage: false,
+      })
+    }
+    const status = hidden ? 'hidden' : 'failed'
+    await logEvent('attempt_end', {
+      result: status,
+      reason: 'respond_button_missing',
+      pageUrl: page.url(),
+    })
+    return status
   }
 
   console.log('Нажимаем кнопку откликнуться на вакансию')
@@ -515,6 +841,18 @@ const tryRespondToFirstVacancy = async (page, coverLetter, debug = false) => {
   await delay(1200)
 
   await clickIfVisible(page, 'button:has-text("Все равно откликнуться")', 2000)
+
+  if (await isQuestionnaireBlocker(page)) {
+    const bodySnippet = (await page.locator('body').innerText().catch(() => '')).slice(0, 1200)
+    await logEvent('questionnaire_blocker', {
+      pageUrl: page.url(),
+      vacancyId,
+      reason: 'questionnaire_required_after_click',
+      bodySnippet,
+    })
+    await handleQuestionnaireBlocker(page, searchUrl, vacancyId)
+    return 'questionnaire_blocker'
+  }
 
   if (await hasDailyResponseLimitMessage(page)) {
     return 'limit'
@@ -535,15 +873,27 @@ const tryRespondToFirstVacancy = async (page, coverLetter, debug = false) => {
       [...new Set(qaAfterClick)].join(', '),
     )
     console.log('DEBUG current URL:', page.url())
+    await debugInspectSelectors(page, true, {
+      responseButton:
+        '[data-qa="vacancy-serp__vacancy_response"], button:has-text("Откликнуться"), button:has-text("Отклик")',
+      coverLetterToggle:
+        '[data-qa="vacancy-response-letter-toggle"], [data-qa*="letter-toggle"], button:has-text("Добавить сопроводительное")',
+      coverLetterTextarea:
+        '[data-qa="vacancy-response-popup-form-letter-input"], textarea[name="text"], textarea[name*="letter"], textarea[name^="task_"][name$="_text"]',
+      submitButton:
+        '[data-qa="vacancy-response-submit-popup"], button:has-text("Отправить"), button:has-text("Отправить отклик")',
+      popupOverlay:
+        '[data-qa="modal-overlay"], [role="dialog"], div[class*="overlay"], div[class*="popup"]',
+    })
   }
 
   await clickIfVisible(page, '[data-qa="relocation-warning-confirm"]', 1200)
 
-  if (await handleQuestionnaireBlocker(page)) {
-    return 'failed'
+  if (await handleMobileBottomSheet(page, coverLetter)) {
+    return 'success'
   }
 
-  if (await handleMobileBottomSheet(page, coverLetter)) {
+  if (await clickAttachLetterAndSubmit(page, coverLetter)) {
     return 'success'
   }
 
@@ -551,8 +901,33 @@ const tryRespondToFirstVacancy = async (page, coverLetter, debug = false) => {
     return 'success'
   }
 
-  if (await clickAttachLetterAndSubmit(page, coverLetter)) {
-    return 'success'
+  if (await handleQuestionnaireBlocker(page, searchUrl, vacancyId)) {
+    const bodySnippet = (await page.locator('body').innerText().catch(() => '')).slice(0, 1200)
+    await logEvent('questionnaire_blocker', {
+      pageUrl: page.url(),
+      vacancyId,
+      reason: 'questionnaire_required',
+      bodySnippet,
+    })
+    return 'questionnaire_blocker'
+  }
+
+  if (debug) {
+    console.log('DEBUG: не удалось отправить отклик, вывожу состояние страницы...')
+    await debugInspectSelectors(page, true, {
+      coverLetterTextarea:
+        '[data-qa="vacancy-response-popup-form-letter-input"], textarea[name="text"], textarea[name*="letter"], textarea[name^="task_"][name$="_text"]',
+      mobileSheetSubmit:
+        '[data-qa="vacancy-response-submit-popup"], button:has-text("Отправить")',
+      letterToggle:
+        '[data-qa="vacancy-response-letter-toggle"], [data-qa*="letter-toggle"], button:has-text("Добавить сопроводительное")',
+      submitAction:
+        '[data-qa="vacancy-response-letter-submit"], button:has-text("Отправить"):visible',
+    })
+    await page.screenshot({
+      path: 'playwright/debug-final-failure.png',
+      fullPage: false,
+    })
   }
 
   await page.keyboard.press('Escape').catch(() => {})
@@ -565,6 +940,18 @@ const main = async () => {
     args.max ?? args.maxResponses ?? '50',
     10,
   )
+
+  jsonEventLog = []
+  await writeJsonLog()
+  await logEvent('run_start', {
+    maxResponses,
+    maxAttempts: Number.parseInt(args.maxAttempts ?? String(Math.max(maxResponses * 5, maxResponses)), 10),
+    maxFailStreak: Number.parseInt(args.maxFailStreak ?? '5', 10),
+    debug: Boolean(args.debug),
+    desktop: Boolean(args.desktop || args.device === 'desktop'),
+    searchQuery: String(args.query || '').trim(),
+    resumeId: args.resume || '',
+  })
   const maxAttempts = Number.parseInt(
     args.maxAttempts ?? String(Math.max(maxResponses * 5, maxResponses)),
     10,
@@ -576,6 +963,7 @@ const main = async () => {
   const coverLetter = args.cover || args.coverLetter || DEFAULT_COVER_LETTER
   const cookiesPath = args.cookies
   const headless = !args.headed
+  const useDesktop = Boolean(args.desktop || args.device === 'desktop')
   const debug = Boolean(args.debug)
 
   if (Number.isNaN(maxResponses) || maxResponses <= 0) {
@@ -594,9 +982,16 @@ const main = async () => {
 
   const browser = await chromium.launch({ headless })
   const iPhone = devices['iPhone 14 Pro Max']
-  const context = await browser.newContext({ ...iPhone, locale: 'ru-RU' })
+  const context = await browser.newContext(
+    useDesktop
+      ? { locale: 'ru-RU', viewport: { width: 1280, height: 800 } }
+      : { ...iPhone, locale: 'ru-RU' },
+  )
 
   try {
+    if (useDesktop) {
+      console.log('Запуск в десктопном режиме.');
+    }
     if (cookiesPath) {
       const cookies = await readCookiesFromFile(cookiesPath)
       if (!cookies.length) {
@@ -649,17 +1044,31 @@ const main = async () => {
         page,
         coverLetter,
         debug && attempts === 1,
+        targetSearchUrl,
       )
 
       if (respondResult === 'limit') {
         console.warn(
           'Предупреждение: у вас исчерпан лимит откликов (не более 200 за 24 часа). Попробуйте позже.',
         )
+        await logEvent('attempt_end', {
+          attempt: attempts,
+          sent,
+          result: 'limit',
+          reason: 'daily_limit',
+          pageUrl: page.url(),
+        })
         stoppedByDailyLimit = true
         break
       }
 
       if (respondResult === 'success') {
+        await logEvent('attempt_end', {
+          attempt: attempts,
+          sent,
+          result: 'success',
+          pageUrl: page.url(),
+        })
         await delay(1200)
 
         if (await hasDailyResponseLimitMessage(page)) {
@@ -678,6 +1087,13 @@ const main = async () => {
           break
         }
       } else {
+        await logEvent('attempt_end', {
+          attempt: attempts,
+          sent,
+          result: 'failed',
+          pageUrl: page.url(),
+          reason: respondResult,
+        })
         failStreak += 1
         console.log('Отклик не отправлен в этой попытке.')
 

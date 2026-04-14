@@ -6,18 +6,11 @@ const LOG_FILE_PATH = path.resolve(process.cwd(), "hh-responses-log.json");
 let jsonEventLog = [];
 
 const DEFAULT_COVER_LETTER = `Здравствуйте!
+Во фронтенде с 2019 года. Последние почти 5 лет в Яндексе — корпоративная платформа на 5000+ сотрудников, высокая нагрузка, легаси, постоянный рефакторинг. Работал ведущим фронтом в командах до 12 человек: декомпозиция, код-ревью, онбординг.
 
-Меня зовут Дмитрий, я frontend-разработчик с опытом коммерческой разработки в e-commerce и корпоративных проектах. Начинал карьеру как стажёр и вырос до самостоятельного специалиста, который может взять на себя как разработку пользовательских интерфейсов, так и участие в проектировании архитектуры приложений.
+Занимался архитектурой (FSD, BFF, RBAC), оптимизацией Core Web Vitals, real-time коллаборацией на Yjs + WebSocket, настройкой CI/CD и E2E-тестирования на Playwright. Умею переводить требования бизнеса в технические решения и выводить фичи в релиз без пожаров.
 
-В своей работе я использую React (TypeScript), Redux Toolkit, Recoil, HTML5, CSS3, REST API, а также имею опыт с Node.js/NestJS, PostgreSQL, Redis и Docker. Такой стек позволяет мне уверенно работать не только с клиентской частью, но и взаимодействовать с серверной логикой, обеспечивая целостность продукта.
-
-Реализовывал фильтрацию и адаптивные интерфейсы в онлайн-магазине, создавал систему отчетов и модуль работы с видеозаписями для корпоративного портала, оптимизировал работу с большими данными, сокращая время отклика интерфейса в несколько раз.
-
-Я ценю командную работу и открытое обсуждение архитектурных решений, быстро обучаюсь новым технологиям и стараюсь находить баланс между качеством кода и сроками разработки. Буду рад применить свой опыт и знания для развития вашего продукта.
-
-Спасибо за внимание к моей кандидатуре. Готов обсудить детали и ответить на вопросы на собеседовании. Мой телеграмм: @Fanare01
-
-С уважением, Дмитрий`;
+мой тг: @bondar_nik97`;
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -334,9 +327,28 @@ const getVacancyIdFromPage = async (page) => {
   return extractVacancyIdFromUrl(href);
 };
 
+// Есть ли на текущей странице вакансии, которые мы ещё не обрабатывали
+const hasUnseenVacanciesOnPage = async (page, seenIds) => {
+  const cards = page.locator('[data-qa="vacancy-serp__vacancy"]');
+  const count = await cards.count().catch(() => 0);
+  for (let i = 0; i < count; i++) {
+    const link = cards.nth(i).locator('a[href*="/vacancy/"]').first();
+    if (!(await link.count())) continue;
+    const href = await link.getAttribute("href").catch(() => "");
+    const id = extractVacancyIdFromUrl(href);
+    if (id && !seenIds.has(id)) return true;
+  }
+  return false;
+};
+
 const goToNextSearchPage = async (page) => {
+  // Пагинация HH находится в самом низу страницы —
+  // прокручиваем туда, иначе :visible может не найти кнопку.
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.waitForTimeout(600);
+
   const nextButton = page
-    .locator('[data-qa="pager-next"]:visible, a[rel="next"]:visible')
+    .locator('[data-qa="pager-next"], a[rel="next"]')
     .first();
 
   if (!(await nextButton.count())) {
@@ -1139,6 +1151,7 @@ const main = async () => {
     let sent = 0;
     let attempts = 0;
     let failStreak = 0;
+    let stuckStreak = 0; // счётчик подряд скрытых уже-виденных вакансий
     let stoppedByDailyLimit = false;
     const seenVacancyIds = new Set();
 
@@ -1167,8 +1180,12 @@ const main = async () => {
         await hideFirstVacancy(page, currentVacancyId);
         await page.reload({ waitUntil: "domcontentloaded" });
         await delay(1000);
-        failStreak += 1;
-        if (failStreak >= maxFailStreak) {
+        // Не считаем за реальный сбой — это просто уборка дублей.
+        // Используем отдельный счётчик, чтобы избежать бесконечного цикла
+        // когда вся страница состоит из уже-виденных вакансий.
+        stuckStreak += 1;
+        if (stuckStreak >= maxFailStreak * 3) {
+          stuckStreak = 0;
           const moved = await goToNextSearchPage(page);
           if (moved) {
             failStreak = 0;
@@ -1193,7 +1210,6 @@ const main = async () => {
               console.log(
                 "Следующая страница и поисковые запросы закончились.",
               );
-              failStreak = 0;
             }
           }
         }
@@ -1249,6 +1265,7 @@ const main = async () => {
 
         sent += 1;
         failStreak = 0;
+        stuckStreak = 0;
         console.log(`Успех. Отправлено: ${sent}/${maxResponses}`);
 
         if (sent >= maxResponses) {
@@ -1273,38 +1290,49 @@ const main = async () => {
           console.log("Отклик не отправлен в этой попытке.");
         } else {
           failStreak = 0;
+          stuckStreak = 0;
         }
 
         if (failStreak >= maxFailStreak) {
-          console.log(
-            `Подряд неудач: ${failStreak}. Переходим на следующую страницу выдачи...`,
-          );
-          const moved = await goToNextSearchPage(page);
-          if (moved) {
+          // Сначала проверяем: есть ли ещё невиденные вакансии на этой странице.
+          // После reload мы всегда на странице 1, и необработанные вакансии могут там ещё оставаться.
+          const hasMore = await hasUnseenVacanciesOnPage(page, seenVacancyIds);
+          if (hasMore) {
+            console.log(
+              `Подряд неудач: ${failStreak}, но на странице ещё есть необработанные вакансии — продолжаем.`,
+            );
             failStreak = 0;
-            targetSearchUrl = page.url();
-            seenVacancyIds.clear();
           } else {
-            // Страниц больше нет — пробуем следующий поисковый запрос
-            const nextQueryIndex = queryIndex + 1;
-            if (queries.length && nextQueryIndex < queries.length) {
-              queryIndex = nextQueryIndex;
-              const nextQuery = queries[queryIndex];
-              console.log(
-                `Страницы по запросу "${queries[queryIndex - 1]}" закончились. Переходим к запросу "${nextQuery}"...`,
-              );
-              targetSearchUrl = buildSearchUrlByQuery(nextQuery, resumeId);
-              await page.goto(targetSearchUrl, {
-                waitUntil: "domcontentloaded",
-              });
-              await page.waitForTimeout(1500);
+            console.log(
+              `Подряд неудач: ${failStreak}. Переходим на следующую страницу выдачи...`,
+            );
+            const moved = await goToNextSearchPage(page);
+            if (moved) {
+              failStreak = 0;
+              targetSearchUrl = page.url();
               seenVacancyIds.clear();
-              failStreak = 0;
             } else {
-              console.log(
-                "Следующая страница и поисковые запросы закончились.",
-              );
-              failStreak = 0;
+              // Страниц больше нет — пробуем следующий поисковый запрос
+              const nextQueryIndex = queryIndex + 1;
+              if (queries.length && nextQueryIndex < queries.length) {
+                queryIndex = nextQueryIndex;
+                const nextQuery = queries[queryIndex];
+                console.log(
+                  `Страницы по запросу "${queries[queryIndex - 1]}" закончились. Переходим к запросу "${nextQuery}"...`,
+                );
+                targetSearchUrl = buildSearchUrlByQuery(nextQuery, resumeId);
+                await page.goto(targetSearchUrl, {
+                  waitUntil: "domcontentloaded",
+                });
+                await page.waitForTimeout(1500);
+                seenVacancyIds.clear();
+                failStreak = 0;
+              } else {
+                console.log(
+                  "Следующая страница и поисковые запросы закончились.",
+                );
+                failStreak = 0;
+              }
             }
           }
         }

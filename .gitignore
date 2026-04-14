@@ -20,3 +20,4 @@ chat-auto/debug-*.json
 chat-auto/debug-*.png
 chat-auto/debug-*.jpg
 .venv/
+hh-responses-log.json
